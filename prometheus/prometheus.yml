@@ -1,0 +1,43 @@
+# # prometheus/prometheus.yml
+# --- Prometheus Scrape Configuration ---
+
+global:
+  scrape_interval: 15s  # FIX: Increased from 5s to reduce load
+  scrape_timeout: 10s   # FIX: Increased timeout
+  evaluation_interval: 15s
+  external_labels:
+    monitor: 'observability-monitor'
+
+# FIX: Add rule_files section for alerting rules (optional)
+rule_files:
+  - "rules/*.yml"
+
+scrape_configs:
+  # Job for scraping the Node.js application
+  - job_name: 'nodejs_app'
+    scrape_interval: 15s  # FIX: Match global interval
+    scrape_timeout: 10s
+    metrics_path: '/metrics'
+    scheme: http
+    # FIX: Use service name with explicit port for Docker network
+    static_configs:
+      - targets: ['nodejs_app:3000']
+        labels:
+          application: 'nodejs-app-metrics'
+          group: 'application'
+    # FIX: Add relabeling for better organization
+    relabel_configs:
+      - source_labels: [__address__]
+        target_label: __param_target
+      - source_labels: [__param_target]
+        target_label: __address__
+        replacement: nodejs_app:9115  # Optional: if using node exporter
+
+  # Job for scraping Prometheus itself
+  - job_name: 'prometheus'
+    scrape_interval: 15s
+    static_configs:
+      - targets: ['localhost:9090']
+        labels:
+          application: 'prometheus'
+          group: 'infrastructure'

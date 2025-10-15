@@ -1,0 +1,70 @@
+# # docker-compose.yml
+# --- Docker Compose Orchestration (Full Observability with OTLP) ---
+
+services:
+  # 1. Node.js Application (Source of Metrics and Traces)
+  nodejs_app:
+    build: .
+    container_name: nodejs_observability_app
+    ports:
+      # FIX: Properly map port 3000 for external access
+      - "3000:3000"
+    volumes:
+      - .:/usr/src/app
+      # FIX: Add node_modules exclusion to prevent conflicts
+      - /usr/src/app/node_modules
+    environment:
+      # FIX: Ensure consistent service naming
+      - NODE_ENV=development
+    restart: unless-stopped
+    healthcheck:
+      # FIX: Add health check to ensure app is responsive
+      test: ["CMD", "curl", "-f", "http://localhost:3000/"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    # FIX: Expose port for internal network access
+    expose:
+      - "3000"
+
+  # 2. Prometheus Monitoring Server (Metrics Collector)
+  prometheus:
+    image: prom/prometheus:v2.47.0
+    container_name: prometheus_server
+    ports:
+      - "9090:9090"
+    volumes:
+      - ./prometheus/prometheus.yml:/etc/prometheus/prometheus.yml
+    command: 
+      - --config.file=/etc/prometheus/prometheus.yml
+      - --storage.tsdb.path=/prometheus
+      - --web.console.libraries=/etc/prometheus/console_libraries
+      - --web.console.templates=/etc/prometheus/consoles
+      - --web.enable-lifecycle
+    restart: unless-stopped
+    depends_on:
+      nodejs_app:
+        condition: service_healthy  # FIX: Wait for app to be healthy
+    # FIX: Add network alias for consistent service discovery
+    networks:
+      - observability-network
+
+  # 3. Jaeger All-in-One (Tracing Collector and UI)
+  jaeger_collector:
+    image: jaegertracing/all-in-one:latest
+    container_name: jaeger_tracing
+    ports:
+      - "16686:16686"
+      - "4318:4318"
+      - "4317:4317"  # gRPC port for completeness
+    environment:
+      - COLLECTOR_OTLP_ENABLED=true
+    restart: unless-stopped
+    networks:
+      - observability-network
+
+# FIX: Add explicit network definition
+networks:
+  observability-network:
+    driver: bridge
